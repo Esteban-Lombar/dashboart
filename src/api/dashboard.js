@@ -1,20 +1,13 @@
-// src/api/dashboard.js
 import { http } from "./http";
 
-/**
- * Rutas reales según tu back:
- *   /trivia/questions/*
- *   /trivia/rooms/*
- */
+/** ÚNICO GET disponible hoy */
+export const getQuestionsList = () =>
+  http.get("/trivia/questions").then(r => r.data);
 
-// Estadísticas globales (partidas jugadas, ranking, categorías)
-export const getOverview = () =>
-  http.get("/trivia/questions/overview").then(r => r.data);
-
-// Partidas activas (jugadores conectados)
-export const getActiveMatches = () =>
-  http.get("/trivia/rooms/active").then(r => r.data);
-
-// Preguntas enviadas y resultados (últimas N)
-export const getQuestionsStream = (limit = 50) =>
-  http.get(`/trivia/questions/stream?limit=${limit}`).then(r => r.data);
+/** Placeholders para evitar 404 (no llames a estas funciones) */
+export const getActiveMatches = async () => {
+  throw new Error("Endpoint no disponible: GET /trivia/rooms/active");
+};
+export const getOverview = async () => {
+  throw new Error("Endpoint no disponible: GET /trivia/questions/overview");
+};
