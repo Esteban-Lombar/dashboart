@@ -1,19 +1,14 @@
 // src/api/dashboard.js
 import { http } from "./http";
 
-/**
- * Endpoints reales en tu back (Railway):
- *  - GET /trivia/rooms/active
- *  - GET /trivia/questions/overview
- *  - (ya existente) GET /trivia/questions  ← lo mantenemos para el feed
- */
+/** Siempre agrega un timestamp para evitar cache 304 */
+const noCache = () => ({ params: { _t: Date.now() } });
 
 export const getActiveMatches = () =>
-  http.get("/trivia/rooms/active").then((r) => r.data);
+  http.get("/trivia/rooms/active", noCache()).then((r) => r.data);
 
 export const getOverview = () =>
-  http.get("/trivia/questions/overview").then((r) => r.data);
+  http.get("/trivia/questions/overview", noCache()).then((r) => r.data);
 
-// Feed básico (catálogo) hasta que exista un stream:
 export const getQuestionsList = () =>
-  http.get("/trivia/questions").then((r) => r.data);
+  http.get("/trivia/questions", noCache()).then((r) => r.data);

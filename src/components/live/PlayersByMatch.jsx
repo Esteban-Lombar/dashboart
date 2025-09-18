@@ -40,7 +40,7 @@ export default function PlayersByMatch() {
     };
 
     load();
-    const id = setInterval(load, 15000); // refresh simple cada 15s
+    const id = setInterval(load, 7000); // refresh simple cada 15s
     return () => {
       mounted = false;
       clearInterval(id);

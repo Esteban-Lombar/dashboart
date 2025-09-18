@@ -12,6 +12,20 @@ const Skeleton = () => (
   </div>
 );
 
+// 👇 intenta múltiples claves típicas: { questions } | { items } | array directo
+function normalizeQuestions(raw) {
+  const src = Array.isArray(raw) ? raw : (raw?.questions || raw?.items || []);
+  return Array.isArray(src) ? src.map(q => ({
+    id: q._id ?? q.id,
+    question: q.question ?? q.text ?? q.pregunta ?? "—",
+    category: q.category ?? q.categoria ?? null,
+    options: Array.isArray(q.options ?? q.opciones) ? (q.options ?? q.opciones) : [],
+    correctIndex: typeof q.correctIndex === "number" ? q.correctIndex
+                 : (typeof q.respuestaCorrecta === "number" ? q.respuestaCorrecta
+                 : undefined),
+  })) : [];
+}
+
 export default function QuestionsFeed() {
   const [items, setItems] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -19,13 +33,12 @@ export default function QuestionsFeed() {
 
   useEffect(() => {
     let mounted = true;
+
     const load = async () => {
       try {
         setError(null);
-        const data = await getQuestionsList();
-        // adapta según tu shape real:
-        const arr = Array.isArray(data) ? data :
-                    Array.isArray(data?.items) ? data.items : [];
+        const raw = await getQuestionsList();
+        const arr = normalizeQuestions(raw);
         if (mounted) setItems(arr);
       } catch (e) {
         console.error("getQuestionsList:", e);
@@ -34,8 +47,10 @@ export default function QuestionsFeed() {
         if (mounted) setLoading(false);
       }
     };
+
     load();
-    const id = setInterval(load, 15000); // refresh opcional
+    // Si quieres refrescarlo cada X segundos:
+    const id = setInterval(load, 15000);
     return () => { mounted = false; clearInterval(id); };
   }, []);
 
@@ -56,12 +71,12 @@ export default function QuestionsFeed() {
       ) : (
         <ul className="space-y-3">
           {items.map((q, i) => (
-            <li key={q._id || q.id || i} className="p-3 rounded-xl border border-gray-100">
-              <div className="font-medium">{q.question || q.text || "—"}</div>
+            <li key={q.id || i} className="p-3 rounded-xl border border-gray-100">
+              <div className="font-medium">{q.question}</div>
               {q.category && (
                 <div className="mt-1 text-xs text-gray-500">Categoría: {q.category}</div>
               )}
-              {Array.isArray(q.options) && q.options.length > 0 && (
+              {q.options.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-2">
                   {q.options.map((opt, idx) => (
                     <span

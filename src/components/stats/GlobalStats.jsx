@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { getOverview } from "../../api/dashboard";
 import {
   ResponsiveContainer,
@@ -24,53 +24,146 @@ const Skeleton = () => (
   </div>
 );
 
+/**
+ * Normaliza la respuesta del backend para el dashboard.
+ * Soporta:
+ *  A) Objeto resumen (tu caso actual): { totals, topWinners, topCategories }
+ *  B) Array de preguntas (fallback): calcula top de categorías por frecuencia
+ */
+function normalizeOverview(raw) {
+  // B) Fallback: array de preguntas
+  if (Array.isArray(raw)) {
+    const freq = new Map();
+    for (const q of raw) {
+      const cat = q.categoria ?? q.category ?? "—";
+      freq.set(cat, (freq.get(cat) || 0) + 1);
+    }
+    const arr = Array.from(freq.entries()).sort((a, b) => b[1] - a[1]);
+    const total = arr.reduce((acc, [, c]) => acc + c, 0) || 1;
+    const topCategories = arr.map(([name, count]) => ({
+      name,
+      value: Math.round((count / total) * 100),
+    }));
+    return {
+      modoInferido: true,
+      playedMatches: 0,
+      winners: [],
+      topCategories,
+      totalCorrect: 0,
+      totalWrong: 0,
+    };
+  }
+
+  // A) Resumen real
+  const totals = raw?.totals || {};
+  const totalGames = Number(totals.totalGames ?? 0) || 0;
+  const totalCorrect = Number(totals.totalCorrect ?? 0) || 0;
+  const totalWrong = Number(totals.totalWrong ?? 0) || 0;
+
+  // Winners -> { alias, wins }
+  const winners = Array.isArray(raw?.topWinners)
+    ? raw.topWinners.map(w => ({
+        alias: w.username ?? w.alias ?? "—",
+        wins: Number(w.gamesWon ?? w.wins ?? 0) || 0,
+      }))
+    : [];
+
+  // Categorías -> { name, value% }  (value = porcentaje sobre totalCorrect si está disponible)
+  const totalCorrectBase = totalCorrect > 0
+    ? totalCorrect
+    : (Array.isArray(raw?.topCategories)
+        ? raw.topCategories.reduce((acc, c) => acc + (Number(c.correctAnswers || 0)), 0)
+        : 0);
+
+  const topCategories = Array.isArray(raw?.topCategories)
+    ? raw.topCategories.map(c => {
+        const name = c.category ?? c.nombre ?? c.name ?? "—";
+        const correct = Number(c.correctAnswers ?? 0) || 0;
+        const pct = totalCorrectBase > 0 ? Math.round((correct / totalCorrectBase) * 100) : 0;
+        return { name, value: pct };
+      })
+    : [];
+
+  // Ordena desc
+  topCategories.sort((a, b) => b.value - a.value);
+  winners.sort((a, b) => b.wins - a.wins);
+
+  return {
+    modoInferido: false,
+    playedMatches: totalGames,
+    winners,
+    topCategories,
+    totalCorrect,
+    totalWrong,
+  };
+}
+
 export default function GlobalStats() {
-  const [data, setData] = useState(null);
+  const [overview, setOverview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchData = useCallback(async () => {
+    try {
+      setError(null);
+      setRefreshing(true);
+      const raw = await getOverview();
+      const normalized = normalizeOverview(raw);
+      setOverview(normalized);
+    } catch (e) {
+      console.error("getOverview:", e);
+      setError("No se pudo cargar estadísticas.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
     let mounted = true;
-    (async () => {
-      try {
-        setError(null);
-        const res = await getOverview();
-        if (mounted) setData(res || {});
-      } catch (e) {
-        console.error("getOverview:", e);
-        if (mounted) setError("No se pudo cargar estadísticas.");
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    })();
-    return () => { mounted = false; };
-  }, []);
-
-  const winners = useMemo(() => Array.isArray(data?.winnersRanking) ? data.winnersRanking : [], [data]);
-  const topCategories = useMemo(
-    () =>
-      (Array.isArray(data?.topCategories) ? data.topCategories : []).map((c) => ({
-        name: c.category ?? "—",
-        value: Math.round(((c.accuracy ?? 0) * 100))
-      })),
-    [data]
-  );
+    fetchData();
+    // refrescar al volver a la pestaña
+    const onVis = () => document.visibilityState === "visible" && fetchData();
+    document.addEventListener("visibilitychange", onVis);
+    return () => { mounted = false; document.removeEventListener("visibilitychange", onVis); };
+  }, [fetchData]);
 
   if (loading) return <Skeleton />;
 
+  const winners = overview?.winners ?? [];
+  const topCategories = overview?.topCategories ?? [];
+  const playedMatches = overview?.playedMatches ?? 0;
+  const totalCorrect = overview?.totalCorrect ?? 0;
+  const totalWrong = overview?.totalWrong ?? 0;
+  const labelTop = overview?.modoInferido ? "Categorías más frecuentes" : "Categorías más acertadas";
+
   return (
     <div className="space-y-6">
+      {/* Header + botón actualizar */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold">📈 Estadísticas globales</h3>
+        <button
+          onClick={fetchData}
+          className="ml-4 text-xs h-8 px-3 rounded-md border border-gray-200 hover:bg-gray-50"
+          disabled={refreshing}
+          title="Actualizar"
+        >
+          {refreshing ? "Actualizando…" : "Actualizar"}
+        </button>
+      </div>
+
       {/* KPIs */}
       <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        <StatCard label="Partidas jugadas" value={data?.playedMatches ?? 0} />
+        <StatCard label="Partidas jugadas" value={playedMatches} />
         <StatCard label="Ganadores distintos" value={winners.length} />
-        <StatCard label="Top categoría" value={topCategories[0]?.value ? `${topCategories[0].value}%` : "—"} />
-        <StatCard label="Actualizado" value={new Date().toLocaleDateString("es-CO")} />
+        <StatCard label="Aciertos totales" value={totalCorrect} />
+        <StatCard label="Errores totales" value={totalWrong} />
       </div>
 
       {/* Ranking de ganadores */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-        <h3 className="text-lg font-semibold mb-3">🏆 Ranking de ganadores</h3>
+        <h4 className="text-base font-semibold mb-3">🏆 Ranking de ganadores</h4>
         {winners.length === 0 ? (
           <p className="text-sm text-gray-600">Sin datos</p>
         ) : (
@@ -89,9 +182,9 @@ export default function GlobalStats() {
         )}
       </div>
 
-      {/* Categorías más acertadas */}
+      {/* Categorías */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-        <h3 className="text-lg font-semibold mb-3">📚 Categorías más acertadas</h3>
+        <h4 className="text-base font-semibold mb-3">📚 {labelTop}</h4>
         {topCategories.length === 0 ? (
           <p className="text-sm text-gray-600">Sin datos</p>
         ) : (
@@ -101,7 +194,7 @@ export default function GlobalStats() {
                 <Pie data={topCategories} dataKey="value" nameKey="name" outerRadius={100}>
                   {topCategories.map((_, i) => <Cell key={i} />)}
                 </Pie>
-                <Tooltip formatter={(v) => [`${v}%`, "Acierto"]} />
+                <Tooltip formatter={(v) => [`${v}%`, overview?.modoInferido ? "Frecuencia" : "Acierto"]} />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
