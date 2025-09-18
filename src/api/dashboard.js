@@ -1,13 +1,19 @@
+// src/api/dashboard.js
 import { http } from "./http";
 
-/** ÚNICO GET disponible hoy */
-export const getQuestionsList = () =>
-  http.get("/trivia/questions").then(r => r.data);
+/**
+ * Endpoints reales en tu back (Railway):
+ *  - GET /trivia/rooms/active
+ *  - GET /trivia/questions/overview
+ *  - (ya existente) GET /trivia/questions  ← lo mantenemos para el feed
+ */
 
-/** Placeholders para evitar 404 (no llames a estas funciones) */
-export const getActiveMatches = async () => {
-  throw new Error("Endpoint no disponible: GET /trivia/rooms/active");
-};
-export const getOverview = async () => {
-  throw new Error("Endpoint no disponible: GET /trivia/questions/overview");
-};
+export const getActiveMatches = () =>
+  http.get("/trivia/rooms/active").then((r) => r.data);
+
+export const getOverview = () =>
+  http.get("/trivia/questions/overview").then((r) => r.data);
+
+// Feed básico (catálogo) hasta que exista un stream:
+export const getQuestionsList = () =>
+  http.get("/trivia/questions").then((r) => r.data);
