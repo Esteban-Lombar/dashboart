@@ -1,101 +1,79 @@
-import { useEffect, useState } from "react";
-import { getQuestionsList } from "../../api/dashboard";
+import React, { useEffect, useState } from "react";
+import { http } from "../../api/http"; // usamos axios directo para evitar mismatch de imports
 
-const Skeleton = () => (
-  <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-    <div className="h-5 w-56 bg-gray-200 rounded mb-4 animate-pulse" />
-    <div className="space-y-2">
-      {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i} className="h-10 bg-gray-100 rounded animate-pulse" />
-      ))}
-    </div>
-  </div>
-);
-
-// 👇 intenta múltiples claves típicas: { questions } | { items } | array directo
-function normalizeQuestions(raw) {
-  const src = Array.isArray(raw) ? raw : (raw?.questions || raw?.items || []);
-  return Array.isArray(src) ? src.map(q => ({
-    id: q._id ?? q.id,
-    question: q.question ?? q.text ?? q.pregunta ?? "—",
-    category: q.category ?? q.categoria ?? null,
-    options: Array.isArray(q.options ?? q.opciones) ? (q.options ?? q.opciones) : [],
-    correctIndex: typeof q.correctIndex === "number" ? q.correctIndex
-                 : (typeof q.respuestaCorrecta === "number" ? q.respuestaCorrecta
-                 : undefined),
-  })) : [];
-}
+// Normaliza la forma de la pregunta venga como venga del back
+const normalize = (q) => ({
+  id: q._id ?? q.id ?? crypto.randomUUID(),
+  pregunta: q.enunciado ?? q.pregunta ?? q.question ?? q.title ?? "—",
+  categoria: q.categoria ?? q.category ?? "—",
+  opciones: Array.isArray(q.opciones) ? q.opciones : Array.isArray(q.options) ? q.options : [],
+  correcta: q.respuestaCorrecta ?? q.correcta ?? q.answer ?? null,
+  img: q.img ?? q.image ?? null,
+});
 
 export default function QuestionsFeed() {
-  const [items, setItems] = useState(null);
+  const [questions, setQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const load = async () => {
+    try {
+      setError(null);
+      // cache-busting por si hay CDN de por medio
+      const res = await http.get("/trivia/questions", { params: { _t: Date.now() } });
+      const raw =
+        (Array.isArray(res.data) && res.data) ||
+        res.data?.items ||
+        res.data?.data ||
+        res.data?.result ||
+        [];
+      const list = (Array.isArray(raw) ? raw : []).map(normalize);
+      setQuestions(list);
+    } catch (e) {
+      console.error("Error al cargar preguntas:", e);
+      setError("No se pudieron cargar las preguntas.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    let mounted = true;
-
-    const load = async () => {
-      try {
-        setError(null);
-        const raw = await getQuestionsList();
-        const arr = normalizeQuestions(raw);
-        if (mounted) setItems(arr);
-      } catch (e) {
-        console.error("getQuestionsList:", e);
-        if (mounted) setError("No se pudo cargar preguntas.");
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-
     load();
-    // Si quieres refrescarlo cada X segundos:
-    const id = setInterval(load, 15000);
-    return () => { mounted = false; clearInterval(id); };
   }, []);
 
-  if (loading) return <Skeleton />;
+  if (loading) return <p className="text-gray-500">Cargando preguntas…</p>;
+  if (error)   return <p className="text-rose-700">{error}</p>;
+  if (!questions.length) return <p className="text-gray-500">No hay preguntas recientes.</p>;
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-      <h3 className="text-lg font-semibold mb-3">❓ Preguntas</h3>
+    <div className="bg-white shadow rounded-lg p-4">
+      <h2 className="text-lg font-semibold mb-4">❓ Preguntas</h2>
+      <ul className="space-y-4">
+        {questions.map((q) => (
+          <li key={q.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+            {/* Título / enunciado de la pregunta */}
+            <h4 className="text-base font-semibold text-gray-900 mb-2">
+              {q.pregunta}
+            </h4>
 
-      {error && (
-        <div className="mb-3 text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-2">
-          {error}
-        </div>
-      )}
+            <p className="text-sm text-gray-600 mb-2">
+              Categoría: {q.categoria}
+            </p>
 
-      {!items || items.length === 0 ? (
-        <p className="text-sm text-gray-600">Sin preguntas disponibles.</p>
-      ) : (
-        <ul className="space-y-3">
-          {items.map((q, i) => (
-            <li key={q.id || i} className="p-3 rounded-xl border border-gray-100">
-              <div className="font-medium">{q.question}</div>
-              {q.category && (
-                <div className="mt-1 text-xs text-gray-500">Categoría: {q.category}</div>
-              )}
-              {q.options.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {q.options.map((opt, idx) => (
-                    <span
-                      key={idx}
-                      className={`text-xs px-2 py-1 rounded-full border ${
-                        typeof q.correctIndex === "number" && idx === q.correctIndex
-                          ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-                          : "bg-gray-50 border-gray-200"
-                      }`}
-                    >
-                      {String.fromCharCode(65 + idx)}. {opt}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+            {/* Opciones */}
+            <div className="flex flex-wrap gap-2">
+              {q.opciones.map((op, i) => (
+                <span
+                  key={i}
+                  className="px-3 py-1 bg-gray-200 text-gray-800 text-sm rounded-full"
+                >
+                  {op}
+                </span>
+              ))}
+            </div>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
