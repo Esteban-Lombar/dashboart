@@ -1,3 +1,4 @@
+// src/components/stats/GlobalStats.jsx
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { getOverview } from "../../api/dashboard";
 import {
@@ -5,6 +6,9 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   PieChart, Pie, Cell,
 } from "recharts";
+
+// 🎨 Paleta de colores para las categorías
+const CATEGORY_COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#AA46BE"];
 
 const StatCard = ({ label, value }) => (
   <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-100">
@@ -24,14 +28,8 @@ const Skeleton = () => (
   </div>
 );
 
-/**
- * Normaliza la respuesta del backend para el dashboard.
- * Soporta:
- *  A) Objeto resumen (tu caso actual): { totals, topWinners, topCategories }
- *  B) Array de preguntas (fallback): calcula top de categorías por frecuencia
- */
+// 🔄 Normaliza la respuesta del backend
 function normalizeOverview(raw) {
-  // B) Fallback: array de preguntas
   if (Array.isArray(raw)) {
     const freq = new Map();
     for (const q of raw) {
@@ -54,13 +52,11 @@ function normalizeOverview(raw) {
     };
   }
 
-  // A) Resumen real
   const totals = raw?.totals || {};
   const totalGames = Number(totals.totalGames ?? 0) || 0;
   const totalCorrect = Number(totals.totalCorrect ?? 0) || 0;
   const totalWrong = Number(totals.totalWrong ?? 0) || 0;
 
-  // Winners -> { alias, wins }
   const winners = Array.isArray(raw?.topWinners)
     ? raw.topWinners.map(w => ({
         alias: w.username ?? w.alias ?? "—",
@@ -68,7 +64,6 @@ function normalizeOverview(raw) {
       }))
     : [];
 
-  // Categorías -> { name, value% }  (value = porcentaje sobre totalCorrect si está disponible)
   const totalCorrectBase = totalCorrect > 0
     ? totalCorrect
     : (Array.isArray(raw?.topCategories)
@@ -84,7 +79,6 @@ function normalizeOverview(raw) {
       })
     : [];
 
-  // Ordena desc
   topCategories.sort((a, b) => b.value - a.value);
   winners.sort((a, b) => b.wins - a.wins);
 
@@ -121,12 +115,10 @@ export default function GlobalStats() {
   }, []);
 
   useEffect(() => {
-    let mounted = true;
     fetchData();
-    // refrescar al volver a la pestaña
     const onVis = () => document.visibilityState === "visible" && fetchData();
     document.addEventListener("visibilitychange", onVis);
-    return () => { mounted = false; document.removeEventListener("visibilitychange", onVis); };
+    return () => document.removeEventListener("visibilitychange", onVis);
   }, [fetchData]);
 
   if (loading) return <Skeleton />;
@@ -140,7 +132,6 @@ export default function GlobalStats() {
 
   return (
     <div className="space-y-6">
-      {/* Header + botón actualizar */}
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">📈 Estadísticas globales</h3>
         <button
@@ -161,7 +152,7 @@ export default function GlobalStats() {
         <StatCard label="Errores totales" value={totalWrong} />
       </div>
 
-      {/* Ranking de ganadores */}
+      {/* Ranking */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
         <h4 className="text-base font-semibold mb-3">🏆 Ranking de ganadores</h4>
         {winners.length === 0 ? (
@@ -191,8 +182,10 @@ export default function GlobalStats() {
           <div className="h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={topCategories} dataKey="value" nameKey="name" outerRadius={100}>
-                  {topCategories.map((_, i) => <Cell key={i} />)}
+                <Pie data={topCategories} dataKey="value" nameKey="name" outerRadius={100} labelLine={false}>
+                  {topCategories.map((_, i) => (
+                    <Cell key={i} fill={CATEGORY_COLORS[i % CATEGORY_COLORS.length]} />
+                  ))}
                 </Pie>
                 <Tooltip formatter={(v) => [`${v}%`, overview?.modoInferido ? "Frecuencia" : "Acierto"]} />
                 <Legend />

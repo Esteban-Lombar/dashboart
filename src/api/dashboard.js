@@ -1,6 +1,7 @@
 // src/api/dashboard.js
 import { http } from "./http";
 
+
 /** Siempre agrega un timestamp para evitar cache 304 */
 const noCache = () => ({ params: { _t: Date.now() } });
 
